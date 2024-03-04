@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  cs176:
+    build:
+      context: .
+      dockerfile: .Dockerfile
+    volumes:
+      - .:/home/research/src
+    restart: unless-stopped
+    # ensure containers stay running
+    command: sleep infinity
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "all"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
