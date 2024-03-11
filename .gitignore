@@ -223,3 +223,5 @@ pyrightconfig.json
 *.json
 *.csv
 *.svg
+
+all_proxy_list.txt
