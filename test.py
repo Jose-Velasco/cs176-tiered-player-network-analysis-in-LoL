@@ -3,7 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 from enums import Tier, Position
 from data_classes import Summoner
-from utils import extract_summoners, get_summoner_details_past_n_games, get_summoner_id, update_summoner
+from utils import extract_summoners, get_summoner_details_past_n_games, get_summoner_id, update_summoner, get_all_summoners
+from proxy_utils import get_valid_proxies, ProxyRoller
 
 # %%
 BASE_URL = "https://www.op.gg/"
@@ -38,3 +39,17 @@ update_summoner(summoner0, summoner_details)
 
 # %%
 print(summoner0)
+
+# TODO: test get_valid_proxies, ProxyRoller, get_all_summoners
+# # %%
+# valid_proxies = get_valid_proxies("all_proxy_list.txt")
+
+# # %%
+# proxy_roller = ProxyRoller(
+#     session=requests.Session(),
+#     proxies=valid_proxies,
+#     headers=headers
+# )
+
+# # %%
+# all_summoners = get_all_summoners(TIERS_EXTRACTING, BASE_URL, LEADERBOARDS_URL, proxy_roller)

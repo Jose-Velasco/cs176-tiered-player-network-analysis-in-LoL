@@ -1,10 +1,10 @@
-import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 from enums import Tier, Position
 from data_classes import Summoner
 import re
 import json
 from collections import Counter
+from proxy_utils import ProxyRoller
 
 def extract_summoners(table: Tag | NavigableString)-> list[Summoner]:
     """
@@ -42,7 +42,7 @@ def extract_summoners(table: Tag | NavigableString)-> list[Summoner]:
     return summoners
 
 #  testing still
-def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, headers: dict[str, str]) -> list[Summoner]:
+def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, proxy_roller: ProxyRoller) -> list[Summoner]:
     """
     gets all summoners in the provided tiers from the leaderboard_rul
     """
@@ -52,7 +52,7 @@ def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, he
         table_found = True
         while (table_found):
             lboard_page_url = f"{base_url}{leaderboard_url}{tier.value}&page={pg}"
-            res = requests.get(lboard_page_url, headers=headers)
+            res = proxy_roller.get(lboard_page_url)
             soup = BeautifulSoup(res.text, "lxml")
             table = soup.find("table", class_=["css-1l95r9q", "euud7vz10"])
             if table:
@@ -62,27 +62,26 @@ def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, he
                 table_found = False
     return summoners
 
-def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail_url: str, headers: dict[str, str]) -> str:
+def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail_url: str, proxy_roller: ProxyRoller) -> str:
     """
     gets a summoners_id based on username and tagline
     space = %20
     # = -
     """
     summoner = f"{user_name.replace(" ", "%20")}{tagline.replace("#", "-")}"
-    res2 = requests.get(f"{base_url}{summoner_detail_url}{summoner}", headers=headers)
-    soup2 = BeautifulSoup(res2.text, "lxml")
-    script_raw = soup2.find("script", id="__NEXT_DATA__").text
+    url =  f"{base_url}{summoner_detail_url}{summoner}"
+    res = proxy_roller.get(url)
+    soup = BeautifulSoup(res.text, "lxml")
+    script_raw = soup.find("script", id="__NEXT_DATA__").text
     script_json = json.loads(script_raw)
     return script_json["props"]["pageProps"]["data"]["summoner_id"]
 
-def get_summoner_details_past_n_games(summoner_id: str, headers: dict[str, str], n: int = 20) -> dict[str, int | float | str]:
+def get_summoner_details_past_n_games(summoner_id: str, proxy_roller: ProxyRoller, n: int = 20) -> dict[str, int | float | str]:
     """
     send request to api to get player details
     """
-    api_summer_detail_res = requests.get(
-        f"https://op.gg/api/v1.0/internal/bypass/games/na/summoners/{summoner_id}?&limit={n}&hl=en_US&game_type=soloranked",
-        headers=headers
-    )
+    api_url = f"https://op.gg/api/v1.0/internal/bypass/games/na/summoners/{summoner_id}?&limit={n}&hl=en_US&game_type=soloranked"
+    api_summer_detail_res = proxy_roller.get(api_url)
 
     games = 0
     wins = 0
