@@ -69,7 +69,7 @@ class ProxyRoller:
                 res = self.session.get(url, headers=self.headers, proxies={"http": proxy, "https": proxy}, timeout=self.timeout)
                 res.raise_for_status()
                 return res
-            except requests.RequestException as e:
+            except requests.HTTPError as e:
                 print(f"Request failed retrying: {e}")
                 # Add delay before retry
                 time.sleep(self.retry_delay)

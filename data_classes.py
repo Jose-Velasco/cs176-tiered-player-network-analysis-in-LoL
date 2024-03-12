@@ -6,12 +6,12 @@ from typing import Optional
 class Summoner:
     username: str
     tagline: str
-    tier: Tier
-    lp: int
-    level: int
-    total_wins: int
-    total_losses: int
-    past_n_games: int = 20
+    tier: Optional[Tier] = None
+    lp: Optional[int] = None
+    level: Optional[int] = None
+    total_wins: Optional[int] = None
+    total_losses: Optional[int] = None
+    past_n_games: Optional[int] = 20
     summoner_id: Optional[str] = None
     past_n_wins: Optional[int] = None
     past_n_losses: Optional[int] = None
@@ -27,4 +27,4 @@ class Summoner:
     creep_score: Optional[float] = None
 
     def get_kda(self) -> str:
-        return f"{self.k}/{self.a}/{self.a}"
+        return f"{self.kills}/{self.deaths}/{self.assists}"
