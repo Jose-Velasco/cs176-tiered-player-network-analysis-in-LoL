@@ -5,7 +5,7 @@ from data_classes import Summoner
 import re
 import json
 from collections import Counter
-from proxy_utils import ProxyRoller
+from http_clients import HttpClient
 
 def extract_summoners(table: Tag | NavigableString)-> list[Summoner]:
     """
@@ -43,7 +43,7 @@ def extract_summoners(table: Tag | NavigableString)-> list[Summoner]:
     return summoners
 
 #  testing still
-def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, proxy_roller: ProxyRoller) -> list[Summoner]:
+def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, http_client: HttpClient) -> list[Summoner]:
     """
     gets all summoners in the provided tiers from the leaderboard_rul
     """
@@ -53,7 +53,7 @@ def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, pr
         table_found = True
         while (table_found):
             lboard_page_url = f"{base_url}{leaderboard_url}{tier.value}&page={pg}"
-            res = proxy_roller.get(lboard_page_url)
+            res = http_client.get(lboard_page_url)
             soup = BeautifulSoup(res.text, "lxml")
             table = soup.find("table", class_=["css-1l95r9q", "euud7vz10"])
             if table:
@@ -63,7 +63,7 @@ def get_all_summoners(tiers: list[Tier], base_url: str, leaderboard_url: str, pr
                 table_found = False
     return summoners
 
-def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail_url: str, proxy_roller: ProxyRoller) -> str:
+def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail_url: str, http_client: HttpClient) -> str:
     """
     gets a summoners_id based on username and tagline
     space = %20
@@ -71,7 +71,7 @@ def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail
     """
     summoner = f"{user_name.replace(" ", "%20")}{tagline.replace("#", "-")}"
     url =  f"{base_url}{summoner_detail_url}{summoner}"
-    res = proxy_roller.get(url)
+    res = http_client.get(url)
     soup = BeautifulSoup(res.text, "lxml")
     script_raw = soup.find("script", id="__NEXT_DATA__").text
     script_json = json.loads(script_raw)
@@ -82,7 +82,7 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
     send request to api to get player details
     """
     # api_url = f"https://op.gg/api/v1.0/internal/bypass/games/na/summoners/{summoner_id}?&limit={n}&hl=en_US&game_type=soloranked"
-    # api_summer_detail_res = proxy_roller.get(api_url)
+    # api_summer_detail_res = http_client.get(api_url)
 
     games = 0
     wins = 0
@@ -93,6 +93,7 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
     positions_played = Counter()
     minion_kill = 0
     neutral_minion_kill = 0
+    total_team_kills = 0
 
     for game in summer_detail_payload["data"]:
         games += 1
@@ -104,12 +105,19 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
         minion_kill += int(game["myData"]["stats"]["minion_kill"])
         neutral_minion_kill += int(game["myData"]["stats"]["neutral_minion_kill"])
         positions_played.update([game["myData"]["position"]])
+        
+        # either BLUE or RED
+        game_team_key: str = game["myData"]["team_key"]
+        team_game_info = game["teams"][0] if game_team_key in game["teams"][0] else game["teams"][1]
+        total_team_kills += int(team_game_info["game_stat"]["kill"])
+
 
     cs_avg = (minion_kill + neutral_minion_kill) / games
     kills_avg = kills / games
     deaths_avg = deaths / games
     assists_avg = assists / games
     preferred_position = Position[positions_played.most_common(1)[0][0].upper()]
+    Kill_participation = (kills + assists) / total_team_kills
     return {
         "games_found": games,
         "wins": wins,
@@ -118,7 +126,8 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
         "deaths_avg": deaths_avg,
         "assists_avg": assists_avg,
         "cs_avg": cs_avg,
-        "preferred_position": preferred_position
+        "preferred_position": preferred_position,
+        "Kill_participation": Kill_participation
     }
 
 def extract_summoner_games_participants(summer_detail_payload: dict[str, Any]) -> list[Summoner]:
@@ -126,7 +135,8 @@ def extract_summoner_games_participants(summer_detail_payload: dict[str, Any]) -
     returns a list of players the summoner in payload has played games with based on games in payload
     """
     players_played_with: list[Summoner] = []
-    extractor_summoner_id: str = summer_detail_payload["data"]["myData"]["summoner"]["summoner_id"]
+    game_num = 0
+    extractor_summoner_id: str = summer_detail_payload["data"][game_num]["myData"]["summoner"]["summoner_id"]
     for game in summer_detail_payload["data"]:
         for player in game["participants"]:
             if player["summoner"]["summoner_id"] != extractor_summoner_id:
@@ -148,8 +158,9 @@ def update_summoner(summoner: Summoner, data: dict[str, str]) -> None:
     summoner.assists = data["assists_avg"]
     summoner.creep_score = data["cs_avg"]
     summoner.preferred_position = data["preferred_position"]
+    summoner.Kill_participation = data["Kill_participation"]
 
-def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str, summoner: Summoner, proxy_roller: ProxyRoller, n: int = 20) -> list[Summoner]:
+def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str, summoner: Summoner, http_client: HttpClient, n: int = 20) -> list[Summoner]:
     """
     url needs to have {} where the variables will be injected to
     mutates summoner object with details and returns list of summoners the player participated the last n solo/duo ranked games
@@ -158,13 +169,14 @@ def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str,
     # api_url = "https://op.gg/api/v1.0/internal/bypass/games/na/summoners/{}?&limit={}&hl=en_US&game_type=soloranked".format(summoner_id, n)
     api_url = summoner_profile_details_url.format(summoner.summoner_id, n)
 
-    api_summer_detail_res = proxy_roller.get(api_url)
+    api_summer_detail_res = http_client.get(api_url)
 
     if api_summer_detail_res == None:
         print(f"Request failed")
         return None
     
-    summoner_details = extract_summoner_details(api_summer_detail_res)
+    api_summer_detail_json = api_summer_detail_res.json()
+    summoner_details = extract_summoner_details(api_summer_detail_json)
     update_summoner(summoner, summoner_details)
-    players_played_with = extract_summoner_games_participants(api_summer_detail_res)
+    players_played_with = extract_summoner_games_participants(api_summer_detail_json)
     return players_played_with

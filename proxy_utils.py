@@ -1,7 +1,6 @@
 import requests
 from queue import Queue
 from threading import Thread
-import time
 
 def check_proxies(all_proxies: Queue, valid_proxies: Queue):
     while not all_proxies.empty():
@@ -51,30 +50,3 @@ def get_valid_proxies(file_name: str, num_threads: int = 4) -> list[str]:
         valid_proxy_list.append(valid_proxies_q.get())
 
     return valid_proxy_list
-
-class ProxyRoller:
-    def __init__(self, session: requests.Session, proxies: list[str], headers, timeout: int = 5, retry_attempts: int = 4, retry_delay: int = 1):
-        self.session = session
-        self.proxies = proxies
-        self.timeout = timeout
-        self.headers = headers
-        self.proxy_idx = 0
-        self.retry_attempts = retry_attempts
-        self.retry_delay = retry_delay
-
-    def get(self, url: str):
-        for _ in range(self.retry_attempts):
-            try:
-                proxy = self.proxies[self.proxy_idx]
-                res = self.session.get(url, headers=self.headers, proxies={"http": proxy, "https": proxy}, timeout=self.timeout)
-                res.raise_for_status()
-                return res
-            except requests.HTTPError as e:
-                print(f"Request failed retrying: {e}")
-                # Add delay before retry
-                time.sleep(self.retry_delay)
-            finally:
-                self.proxy_idx = (self.proxy_idx + 1) % len(self.proxies)
-
-        # All retry attempts failed
-        return None

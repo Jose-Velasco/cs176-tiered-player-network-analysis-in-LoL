@@ -23,6 +23,7 @@ class Summoner:
     # assists
     assists: Optional[float] = None
     preferred_position: Optional[Position] = None
+    Kill_participation: Optional[float] = None
     # also known as CS
     creep_score: Optional[float] = None
 

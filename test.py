@@ -1,10 +1,12 @@
 # %%
 import requests
 from bs4 import BeautifulSoup
+import networkx as nx
 from enums import Tier
 from data_classes import Summoner
 from utils import extract_summoners, get_summoner_profile_details_past_n_games, get_summoner_id
-from proxy_utils import get_valid_proxies, ProxyRoller
+from proxy_utils import get_valid_proxies
+from http_clients import RequestsClient, ProxyRoller
 
 # %%
 BASE_URL = "https://www.op.gg/"
@@ -14,9 +16,10 @@ SUMMONER_PROFILE_DETAILS_URL = "https://op.gg/api/v1.0/internal/bypass/games/na/
 TIERS_EXTRACTING = [Tier.CHALLENGER, Tier.GRANDMASTER, Tier.MASTER]
 # %%
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'}
+http_client = RequestsClient(requests.Session(), headers)
 # %%
 # get players from first page that are challenger
-res = requests.get("https://www.op.gg/leaderboards/tier?tier=challenger&page=1", headers=headers)
+res = http_client.get("https://www.op.gg/leaderboards/tier?tier=challenger&page=1")
 #  %%
 soup = BeautifulSoup(res.text, "lxml")
 
@@ -28,9 +31,23 @@ table = soup.find("table", class_=["css-1l95r9q", "euud7vz10"])
 summoners: list[Summoner] = extract_summoners(table)
 
 # %%
-summoner0 = summoners[0]
-summoner0.summoner_id = get_summoner_id(summoner0.username, summoner0.tagline, BASE_URL, SUMMONER_DETAIL_URL, headers)
+summoner0 = summoners[1]
+summoner0.summoner_id = get_summoner_id(summoner0.username, summoner0.tagline, BASE_URL, SUMMONER_DETAIL_URL, http_client)
+get_summoner_profile_details_past_n_games(SUMMONER_PROFILE_DETAILS_URL, summoner0, http_client)
 
+# %%
+# summoners_in_tiers_extracting: dict[str, Summoner] = {}
+G = nx.Graph()
+for summoner in summoners:
+    username_tagline = f"{summoner.username}{summoner.tagline.replace("#", "")}"
+    G.add_node(username_tagline)
+
+# %%
+current_summoner = f"{summoner0.username}{summoner0.tagline.replace("#", "")}"
+if not G.has_node(current_summoner):
+    G.add_node(current_summoner)
+    G.add_edge(current_summoner, current_summoner)
+print(G)
 # %%
 # print(summoner0)
 
