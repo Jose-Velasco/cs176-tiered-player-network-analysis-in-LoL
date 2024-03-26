@@ -221,7 +221,11 @@ pyrightconfig.json
 
 *.png
 *.json
+!.devcontainer.json
 *.csv
 *.svg
+*.rar
 
 all_proxy_list.txt
+leader_board_payloads
+player_detail_payloads

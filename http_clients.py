@@ -12,7 +12,13 @@ class RequestsClient():
         self.headers = headers
     
     def get(self, url: str) -> requests.Response:
-        return self.session.get(url, headers=self.headers)
+        try:
+            res = self.session.get(url, headers=self.headers)
+            res.raise_for_status()
+            return res
+        except requests.HTTPError as e:
+            print(f"Request failed retrying: {e}")
+
 
 class ProxyRoller:
     def __init__(self, session: requests.Session, proxies: list[str], headers: dict[str, str], timeout: int = 5, retry_attempts: int = 4, retry_delay: int = 1):

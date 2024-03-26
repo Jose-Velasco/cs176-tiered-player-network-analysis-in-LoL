@@ -1,12 +1,14 @@
 # %%
 import requests
 from bs4 import BeautifulSoup
-import networkx as nx
 from enums import Tier
 from data_classes import Summoner
-from utils import extract_summoners, get_summoner_profile_details_past_n_games, get_summoner_id
+from utils import get_summoner_profile_details_past_n_games, get_summoner_id
 from proxy_utils import get_valid_proxies
 from http_clients import RequestsClient, ProxyRoller
+
+# %%[markdown]
+#  ## script will utilize requests library and proxy roller to download players in TIERS_EXTRACTING and specific details/stats
 
 # %%
 BASE_URL = "https://www.op.gg/"
@@ -19,7 +21,9 @@ headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 http_client = RequestsClient(requests.Session(), headers)
 # %%
 # get players from first page that are challenger
-res = http_client.get("https://www.op.gg/leaderboards/tier?tier=challenger&page=1")
+# res = http_client.get("https://www.op.gg/leaderboards/tier?tier=challenger&page=1")
+res = http_client.get("https://www.op.gg/_next/data/_VrQ9gbyiIZBzMmfdcsiX/en_US/leaderboards/tier.json?tier=challenger&page=1")
+
 #  %%
 soup = BeautifulSoup(res.text, "lxml")
 
@@ -28,26 +32,26 @@ soup = BeautifulSoup(res.text, "lxml")
 table = soup.find("table", class_=["css-1l95r9q", "euud7vz10"])
 
 # %%
-summoners: list[Summoner] = extract_summoners(table)
+# summoners: list[Summoner] = extract_summoners(table)
 
 # %%
-summoner0 = summoners[1]
-summoner0.summoner_id = get_summoner_id(summoner0.username, summoner0.tagline, BASE_URL, SUMMONER_DETAIL_URL, http_client)
-get_summoner_profile_details_past_n_games(SUMMONER_PROFILE_DETAILS_URL, summoner0, http_client)
+# summoner0 = summoners[1]
+# summoner0.summoner_id = get_summoner_id(summoner0.username, summoner0.tagline, BASE_URL, SUMMONER_DETAIL_URL, http_client)
+# get_summoner_profile_details_past_n_games(SUMMONER_PROFILE_DETAILS_URL, summoner0, http_client)
 
 # %%
 # summoners_in_tiers_extracting: dict[str, Summoner] = {}
-G = nx.Graph()
-for summoner in summoners:
-    username_tagline = f"{summoner.username}{summoner.tagline.replace("#", "")}"
-    G.add_node(username_tagline)
+# G = nx.Graph()
+# for summoner in summoners:
+#     username_tagline = f"{summoner.username}{summoner.tagline.replace("#", "")}"
+#     G.add_node(username_tagline)
 
-# %%
-current_summoner = f"{summoner0.username}{summoner0.tagline.replace("#", "")}"
-if not G.has_node(current_summoner):
-    G.add_node(current_summoner)
-    G.add_edge(current_summoner, current_summoner)
-print(G)
+# # %%
+# current_summoner = f"{summoner0.username}{summoner0.tagline.replace("#", "")}"
+# if not G.has_node(current_summoner):
+#     G.add_node(current_summoner)
+#     G.add_edge(current_summoner, current_summoner)
+# print(G)
 # %%
 # print(summoner0)
 

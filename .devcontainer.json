@@ -1,0 +1,24 @@
+{
+    "name": "cs176",
+	"dockerComposeFile": [
+		"./docker-compose.yaml"
+	],
+    "service": "cs176",
+    "workspaceFolder": "/home/research/src",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "streetsidesoftware.code-spell-checker",
+                "grapecity.gc-excelviewer",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "esbenp.prettier-vscode",
+                "ms-toolsai.jupyter",
+                "ms-azuretools.vscode-docker",
+                "visualstudioexptteam.vscodeintellicode",
+                "eamodio.gitlens"
+            ]
+        }
+    },
+    "shutdownAction": "none"
+}

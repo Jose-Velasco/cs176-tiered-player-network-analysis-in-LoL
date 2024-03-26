@@ -23,9 +23,10 @@ class Summoner:
     # assists
     assists: Optional[float] = None
     preferred_position: Optional[Position] = None
-    Kill_participation: Optional[float] = None
+    kill_participation: Optional[float] = None
     # also known as CS
     creep_score: Optional[float] = None
+    players_played_with: Optional[list[str]] = None
 
     def get_kda(self) -> str:
         return f"{self.kills}/{self.deaths}/{self.assists}"
