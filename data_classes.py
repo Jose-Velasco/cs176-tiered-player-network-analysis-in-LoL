@@ -11,11 +11,15 @@ class Summoner:
     level: Optional[int] = None
     total_wins: Optional[int] = None
     total_losses: Optional[int] = None
-    past_n_games: Optional[int] = 20
+    games_found: Optional[int] = None
     summoner_id: Optional[str] = None
     past_n_wins: Optional[int] = None
     past_n_losses: Optional[int] = None
-    # the below is attributes are based on the last n ranked games
+    damage_dealt_to_champions: Optional[float] = None
+    damage_taken: Optional[float] = None
+    control_wards_placed: Optional[float] = None
+    wards_placed: Optional[float] = None
+    wards_kills: Optional[float] = None
     # kills
     kills: Optional[float] = None
     # deaths

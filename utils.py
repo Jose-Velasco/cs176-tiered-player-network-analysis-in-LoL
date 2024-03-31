@@ -7,6 +7,8 @@ import json
 from collections import Counter
 from http_clients import HttpClient
 import time
+from datetime import datetime
+from dateutil import tz
 
 
 def extract_payload_as_json(driver) -> dict:
@@ -50,7 +52,7 @@ def extract_payload_as_json(driver) -> dict:
 
 def extract_summoners_payload(payload: dict[str, Any])-> list[Summoner]:
     """
-    helper function to extract all players in a given table
+    helper function to extract all players in a given json payload
     """
     summoner_payloads = payload["pageProps"]["data"]
     summoners: list[Summoner] = []
@@ -158,14 +160,14 @@ def get_summoner_id(user_name: str, tagline: str, base_url: str, summoner_detail
     script_json = json.loads(script_raw)
     return script_json["props"]["pageProps"]["data"]["summoner_id"]
 
-def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str, int | float | str]:
+def extract_summoner_details(summer_detail_payload: dict[str, Any], normalize: bool) -> dict[str, int | float | str]:
     """
     send request to api to get player details
     """
     # api_url = f"https://op.gg/api/v1.0/internal/bypass/games/na/summoners/{summoner_id}?&limit={n}&hl=en_US&game_type=soloranked"
     # api_summer_detail_res = http_client.get(api_url)
 
-    games = 0
+    games_found = 0
     wins = 0
     losses = 0
     kills = 0
@@ -175,9 +177,14 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
     minion_kill = 0
     neutral_minion_kill = 0
     total_team_kills = 0
+    damage_dealt_to_champions = 0
+    damage_taken = 0
+    control_wards_placed = 0
+    wards_placed = 0
+    wards_kills = 0
 
     for game in summer_detail_payload["data"]:
-        games += 1
+        games_found += 1
         wins += 1 if game["myData"]["stats"]["result"] == "WIN" else 0
         losses += 1 if game["myData"]["stats"]["result"] == "LOSE" else 0
         kills += int(game["myData"]["stats"]["kill"])
@@ -186,29 +193,46 @@ def extract_summoner_details(summer_detail_payload: dict[str, Any]) -> dict[str,
         minion_kill += int(game["myData"]["stats"]["minion_kill"])
         neutral_minion_kill += int(game["myData"]["stats"]["neutral_minion_kill"])
         positions_played.update([game["myData"]["position"]])
+        damage_dealt_to_champions += int(game["myData"]["stats"]["total_damage_dealt_to_champions"])
+        damage_taken += int(game["myData"]["stats"]["total_damage_taken"])
+        control_wards_placed += int(game["myData"]["stats"]["vision_wards_bought_in_game"])
+        wards_placed += int(game["myData"]["stats"]["ward_place"])
+        wards_kills += int(game["myData"]["stats"]["ward_kill"])
         
         # either BLUE or RED
         game_team_key: str = game["myData"]["team_key"]
         team_game_info = game["teams"][0] if game_team_key in game["teams"][0] else game["teams"][1]
         total_team_kills += int(team_game_info["game_stat"]["kill"])
 
+    denom: int = games_found if normalize else 1
 
-    cs_avg = (minion_kill + neutral_minion_kill) / games
-    kills_avg = kills / games
-    deaths_avg = deaths / games
-    assists_avg = assists / games
+    cs = (minion_kill + neutral_minion_kill) / denom
+    kills = kills / denom
+    deaths = deaths / denom
+    assists = assists / denom
+    damage_dealt_to_champions = damage_dealt_to_champions / denom
+    damage_taken = damage_taken / denom
+    control_wards_placed = control_wards_placed / denom
+    wards_placed = wards_placed / denom
+    wards_kills = wards_kills / denom
     preferred_position = Position[positions_played.most_common(1)[0][0].upper()]
     Kill_participation = (kills + assists) / total_team_kills
+
     return {
-        "games_found": games,
+        "games_found": games_found,
         "wins": wins,
         "losses": losses,
-        "kills_avg": kills_avg,
-        "deaths_avg": deaths_avg,
-        "assists_avg": assists_avg,
-        "cs_avg": cs_avg,
+        "kills_avg": kills,
+        "deaths_avg": deaths,
+        "assists_avg": assists,
+        "cs_avg": cs,
         "preferred_position": preferred_position,
-        "Kill_participation": Kill_participation
+        "Kill_participation": Kill_participation,
+        "damage_dealt_to_champions": damage_dealt_to_champions,
+        "damage_taken": damage_taken,
+        "control_wards_placed": control_wards_placed,
+        "wards_placed": wards_placed,
+        "wards_kills": wards_kills
     }
 
 def extract_summoner_games_participants(summer_detail_payload: dict[str, Any]) -> list[Summoner]:
@@ -228,10 +252,11 @@ def extract_summoner_games_participants(summer_detail_payload: dict[str, Any]) -
                 players_played_with.append(participant)
     return players_played_with
 
-def update_summoner(summoner: Summoner, data: dict[str, str]) -> None:
+def update_summoner(summoner: Summoner, data: dict[str, Any]) -> None:
     """
     helper function to update some properties
     """
+    summoner.games_found = data["games_found"] 
     summoner.past_n_wins = data["wins"]
     summoner.past_n_losses = data["losses"]
     summoner.kills = data["kills_avg"]
@@ -240,8 +265,21 @@ def update_summoner(summoner: Summoner, data: dict[str, str]) -> None:
     summoner.creep_score = data["cs_avg"]
     summoner.preferred_position = data["preferred_position"]
     summoner.kill_participation = data["Kill_participation"]
+    summoner.damage_dealt_to_champions = data["damage_dealt_to_champions"]
+    summoner.damage_taken = data["damage_taken"]
+    summoner.control_wards_placed = data["control_wards_placed"]
+    summoner.wards_placed = data["wards_placed"]
+    summoner.wards_kills = data["wards_kills"]
 
-def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str, summoner: Summoner, http_client: HttpClient, n: int = 20) -> None:
+def update_summoner_details_and_players_played_with(summoner: Summoner, data: dict[str, Any], normalize: bool):
+    summoner_details = extract_summoner_details(data, normalize)
+    update_summoner(summoner, summoner_details)
+    players_played_with = extract_summoner_games_participants(data)
+    players_played_with_str = [f"{player.username}#{player.tagline}" for player in players_played_with]
+    summoner.players_played_with = players_played_with_str
+
+
+def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str, summoner: Summoner, http_client: HttpClient, normalize: bool, n: int = 20) -> None:
     """
     url needs to have {} where the variables will be injected to
     mutates summoner object with details and returns list of summoners the player participated the last n solo/duo ranked games
@@ -259,14 +297,22 @@ def get_summoner_profile_details_past_n_games(summoner_profile_details_url: str,
     
     # api_summer_detail_json = api_summer_detail_res.json()
     api_summer_detail_json = extract_payload_as_json(http_client)
-    summoner_details = extract_summoner_details(api_summer_detail_json)
-    update_summoner(summoner, summoner_details)
-    players_played_with = extract_summoner_games_participants(api_summer_detail_json)
-    players_played_with_str = [f"{player.username}#{player.tagline}" for player in players_played_with]
-    summoner.players_played_with = players_played_with_str
-
+    update_summoner_details_and_players_played_with(summoner, api_summer_detail_json, normalize)
+    # summoner_details = extract_summoner_details(api_summer_detail_json)
+    # update_summoner(summoner, summoner_details)
+    # players_played_with = extract_summoner_games_participants(api_summer_detail_json)
+    # players_played_with_str = [f"{player.username}#{player.tagline}" for player in players_played_with]
+    # summoner.players_played_with = players_played_with_str
 
 
 def generate_summoner_profile_details_past_n_games(summoner_profile_details_url: str, summoner: Summoner, http_client: HttpClient, n: int = 20):
     api_url = summoner_profile_details_url.format(summoner.summoner_id, n)
     http_client.get(api_url)
+
+def get_now_datetime(date_time_format: str = "D%m-%d-%YT%H_%M_%S",timezone: str = "America/Los_Angeles"):
+    zone = tz.gettz(timezone)
+    now_datetime = datetime.now(zone)
+    # D=date, T=time
+    date_time_str = now_datetime.strftime(date_time_format)
+
+    return date_time_str
