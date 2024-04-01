@@ -9,6 +9,7 @@ from http_clients import HttpClient
 import time
 from datetime import datetime
 from dateutil import tz
+import pandas as pd
 
 
 def extract_payload_as_json(driver) -> dict:
@@ -316,3 +317,12 @@ def get_now_datetime(date_time_format: str = "D%m-%d-%YT%H_%M_%S",timezone: str 
     date_time_str = now_datetime.strftime(date_time_format)
 
     return date_time_str
+
+def one_hot_encode(df: pd.DataFrame, column: str, concat: bool):
+    """
+    concat = True will return new df with one hot encodings concatenated along columns else return only one hot encodings as DataFrame
+    """
+    position_dummies = pd.get_dummies(df[column]).astype(int)
+    if concat:
+        return pd.concat([df, position_dummies], axis=1)
+    return position_dummies
