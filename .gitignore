@@ -225,6 +225,8 @@ pyrightconfig.json
 *.csv
 *.svg
 *.rar
+*.graphml
+*.pt
 
 all_proxy_list.txt
 leader_board_payloads

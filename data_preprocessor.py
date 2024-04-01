@@ -1,7 +1,5 @@
 # %%
 import pandas as pd
-import numpy as np
-import networkx as nx
 from utils import one_hot_encode, get_now_datetime
 # %%
 DATASET_PATH = "./lol_C_M_GM_raw_unnormalized_D03-31-2024T00_47_53.csv"
