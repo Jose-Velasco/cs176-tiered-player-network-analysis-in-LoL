@@ -231,3 +231,5 @@ pyrightconfig.json
 all_proxy_list.txt
 leader_board_payloads
 player_detail_payloads
+old_datasets
+PTG_data

@@ -21,7 +21,8 @@ for leaderboard_file_path in leader_board_directory.iterdir():
             data = json.load(file)
             summoners += extract_summoners_payload(data)
 # %%
-# create dict to be able to find summoners based on their username and tagline quickly 
+# create dict to be able to find summoners based on their username and tagline quickly
+# data in leaderboard only has partial summoner info and the rest is in players details
 summoners_with_details_dict: dict[str, Summoner] = {}
 for idx, summoner in enumerate(summoners):
     summoner_key = f"{summoner.summoner_id}"

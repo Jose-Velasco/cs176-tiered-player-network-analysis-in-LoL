@@ -10,6 +10,16 @@ DATA_TYPES = {
     "tier": "category",
     "preferred_position": "category"
 }
+# %%[markdown]
+# ### challenger: 0,
+# ### grandmaster: 1,
+# ### master: 2
+# %%[
+TIER_TO_INT = {
+    "challenger": 0,
+    "grandmaster": 1,
+    "master": 2
+}
 # %%
 lol = pd.read_csv(DATASET_PATH, dtype=DATA_TYPES)
 # %%
@@ -20,7 +30,8 @@ lol.info()
 # %%
 lol = one_hot_encode(lol, "preferred_position", concat=True)
 # %%
-lol = one_hot_encode(lol, "tier", concat=True)
+# lol = one_hot_encode(lol, "tier", concat=True)
+lol["tier"].replace(TIER_TO_INT, inplace=True)
 # %%
 # %%[markdown]
 # ## normalizing int/float columns by number of ranked games found
@@ -41,14 +52,18 @@ lol["assists"] = lol["assists"] / lol["games_found"]
 # ## removing not needed columns
 # %%
 lol.drop("preferred_position", axis=1, inplace=True)
-lol.drop("tier", axis=1, inplace=True)
+# lol.drop("tier", axis=1, inplace=True)
 lol.drop("summoner_id", axis=1, inplace=True)
 lol.drop("lp", axis=1, inplace=True)
 lol.drop("games_found", axis=1, inplace=True)
+# %%[markdown]
+# ## Standardizing the inputs will try to use torch_geometric.transforms import NormalizeFeatures
 # %%
+# lol_inputs = 
 # %%[markdown]
 # ## saving processed dataset
 # %%
 date_time_str = get_now_datetime()
 CSV_FILENAME = f"lol_C_M_GM_processed_normalized_{date_time_str}.csv"
 lol.to_csv(CSV_FILENAME, index=False)
+# %%
