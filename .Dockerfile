@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y graphviz graphviz-dev git
 # GPU install
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 RUN git config --global --add safe.directory /home/research/src
+# apt-get install python3-dev, apt-get install cmake
 
 # will allow the usage if selenium in docker container
 RUN apt-get update && apt-get  install -y wget unzip \

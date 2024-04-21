@@ -66,8 +66,9 @@ class LOL_Dataset(Dataset):
             #     node_feature_matrix.append(node_features_vector)
             #     node_level_targets.append(node_label)
 
+
             save_graph = Data(
-                x=from_nx_graph.x,
+                x=torch.tensor(from_nx_graph.x, dtype=torch.float32),
                 edge_index=from_nx_graph.edge_index,
                 y=from_nx_graph.y
             )
