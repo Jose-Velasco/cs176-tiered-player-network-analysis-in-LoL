@@ -4,7 +4,7 @@ import networkx as nx
 from utils import get_now_datetime
 import ast
 # %%
-DATASET_PATH = "reduced_df.csv"
+DATASET_PATH = "lol_C_M_GM_processed_normalized_D04-21-2024T20_04_54_with_lp.csv"
 DATA_TYPES = {
     "username": "string",
     "tagline": "string",
@@ -35,7 +35,7 @@ for idx, row in lol.iterrows():
             G.add_edge(current_player, participant)
 # %%
 date_time_str = get_now_datetime()
-GRAPHML_FILENAME = f"lol_C_M_GM_graph_{date_time_str}_A"
+GRAPHML_FILENAME = f"lol_C_M_GM_graph_{date_time_str}_with_lp"
 nx.write_graphml(G, f"{GRAPHML_FILENAME}.graphml")
 
 # %%

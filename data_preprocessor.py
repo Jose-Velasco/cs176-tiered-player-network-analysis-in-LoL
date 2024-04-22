@@ -54,7 +54,7 @@ lol["assists"] = lol["assists"] / lol["games_found"]
 lol.drop("preferred_position", axis=1, inplace=True)
 # lol.drop("tier", axis=1, inplace=True)
 lol.drop("summoner_id", axis=1, inplace=True)
-lol.drop("lp", axis=1, inplace=True)
+# lol.drop("lp", axis=1, inplace=True)
 lol.drop("games_found", axis=1, inplace=True)
 # %%[markdown]
 # ## Standardizing the inputs will try to use torch_geometric.transforms import NormalizeFeatures
@@ -64,6 +64,6 @@ lol.drop("games_found", axis=1, inplace=True)
 # ## saving processed dataset
 # %%
 date_time_str = get_now_datetime()
-CSV_FILENAME = f"lol_C_M_GM_processed_normalized_{date_time_str}.csv"
+CSV_FILENAME = f"lol_C_M_GM_processed_normalized_{date_time_str}_with_lp.csv"
 lol.to_csv(CSV_FILENAME, index=False)
 # %%

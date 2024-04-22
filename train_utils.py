@@ -15,7 +15,7 @@ from torch.optim import Optimizer
 from torch import no_grad, tensor
 from torchmetrics.wrappers import MetricTracker
 import matplotlib.pyplot as plt
-from torch_geometric.transforms import BaseTransform
+from torch_geometric.transforms import BaseTransform, RemoveIsolatedNodes
 from sklearn.model_selection import StratifiedShuffleSplit
 import torch
 from collections import Counter
@@ -24,19 +24,26 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
 import networkit as nk
 import pandas as pd
+import networkx as nx
+from sklearn.manifold import TSNE
 
 class EarlyStopper:
-    def __init__(self, patience: int = 1, min_delta: int = 0):
+    def __init__(self, patience: int = 1, min_delta_factor: float = 0.01):
         self.patience = patience
-        self.min_delta = min_delta
+        self.min_delta_factor = min_delta_factor
         self.counter = 0
         self.min_validation_loss = float('inf')
 
     def early_stop(self, validation_loss: float):
+        min_delta = self.min_delta_factor * validation_loss
         if validation_loss < self.min_validation_loss:
             self.min_validation_loss = validation_loss
             self.counter = 0
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
+        elif validation_loss > (self.min_validation_loss + min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        else:
             self.counter += 1
             if self.counter >= self.patience:
                 return True
@@ -104,9 +111,11 @@ class CustomRandomNodeSplitMasker(BaseTransform):
         return data
     
 class CustomRandomNodeUnderSampler(BaseTransform):
-    def __init__(self, random_state, allowSelfLoops: bool = False):
+    def __init__(self, random_state, allowSelfLoops: bool = False, removeIsolatedNodes: bool = True, isolatedRemoverStrategy: BaseTransform = RemoveIsolatedNodes()):
         self.random_state = random_state
         self.allowSelfLoops = allowSelfLoops
+        self.removeIsolatedNodes = removeIsolatedNodes
+        self.isolatedRemoverStrategy = isolatedRemoverStrategy
     def forward(self, data):
         wasCuda = data.is_cuda
         if wasCuda:
@@ -120,49 +129,42 @@ class CustomRandomNodeUnderSampler(BaseTransform):
         dummy_x = np.zeros_like(labels)
         dummy_x_reshaped = dummy_x.reshape(-1, 1)
         _, __ = underSampler.fit_resample(dummy_x_reshaped, labels)
-        # underSampler.fit_resample(dummy_x_reshaped, labels)
         indices_keep = underSampler.sample_indices_
-
-        # nodes_to_keep_mask = np.zeros(len(labels), dtype=bool)
-        # nodes_to_keep_mask = {node: False for node, _ in range(len(labels))}
-        # for idx, isKeep in enumerate():
-        # nodes_to_keep_mask[indices_to_keep] = True
 
         nodes_to_keep = [data.x[node_idx] for node_idx in indices_keep]
         nodes_to_keep_labels = [labels[node_idx] for node_idx in indices_keep]
-        indices_keep_dict = {node:True for node in indices_keep}
+        indices_keep_dict = {node:idx for idx, node in enumerate(indices_keep)}
 
         # Graph connectivity in COO format. shape [2, num_edges]
         #  "top" list is source node, "bottom" list is destination node
         # edges are based on index position in all_words_ordered
         edges_keep: list[list] = [[], []]
         for edge_pair_idx in range(len(data.edge_index[0])):
-            source_node = data.edge_index[0][edge_pair_idx]
-            destination_node = data.edge_index[1][edge_pair_idx]
-            if (int(source_node) == int(destination_node)) and not self.allowSelfLoops:
+            source_node = int(data.edge_index[0][edge_pair_idx])
+            destination_node = int(data.edge_index[1][edge_pair_idx])
+            if (source_node == destination_node) and not self.allowSelfLoops:
                 continue
-            if int(source_node) in indices_keep_dict and int(destination_node) in indices_keep_dict:
-                edges_keep[0].append(source_node)
-                edges_keep[1].append(destination_node)
+            if source_node in indices_keep_dict and destination_node in indices_keep_dict:
+                source_node_new_idx = indices_keep_dict[source_node]
+                destination_node_new_idx = indices_keep_dict[destination_node]
+                edges_keep[0].append(source_node_new_idx)
+                edges_keep[1].append(destination_node_new_idx)
+        
+        # pd.DataFrame(edges_keep).to_csv("edges_keep.csv")
 
-        # remaining_edges = nodes_to_keep_mask[data.edge_index[0]] & nodes_to_keep_mask[data.edge_index[1]]
-        # remaining_edge_index = data.edge_index[:, remaining_edges]
-        # Keep only the features, edge_index, and other attributes for remaining nodes
-        # remaining_data = Data(
-        #     # x=data.x[nodes_to_keep_mask],
-        #     # edge_index=remaining_edge_index,
-        #     # y=torch.tensor(np.asarray(labels[nodes_to_keep_mask]), dtype=torch.int64)
-        # )
         remaining_data = Data(
-            x=torch.tensor(np.asarray(nodes_to_keep), dtype=torch.float64),
+            x=torch.tensor(np.asarray(nodes_to_keep), dtype=torch.float32),
             edge_index=torch.tensor(edges_keep),
-            y=torch.tensor(np.asarray(nodes_to_keep_labels), dtype=torch.int32)
+            y=torch.tensor(np.asarray(nodes_to_keep_labels), dtype=torch.int64)
         )
+
+        if self.removeIsolatedNodes:
+            remaining_data = self.isolatedRemoverStrategy(remaining_data)
 
         if wasCuda:
             device = torch.device('cuda')
             remaining_data = remaining_data.to(device)
-
+        
         return remaining_data
 
 class ConcatNodeCentralities(BaseTransform):
@@ -174,45 +176,17 @@ class ConcatNodeCentralities(BaseTransform):
         if data.is_cuda:
             device = torch.device('cpu')
             data = data.to(device)
-        # graph_nx = to_networkx(data, node_attrs=["x"], graph_attrs=["y"])
         nk.setNumberOfThreads(12) 
         # ERROR
         # error in conversion to networkx adds mode nodes that in original 1665 nodes to be exact
         graph_nx = to_networkx(data)
         G_nk = nk.nxadapter.nx2nk(graph_nx)
-        # centralities = {
-        #     "degree_centralities": nx.degree_centrality(graph_nx),
-        #     "closeness_centralities": nx.closeness_centrality(graph_nx),
-        #     "betweenness_centralities": nx.betweenness_centrality(graph_nx),
-        #     "eigen_centralities": nx.eigenvector_centrality(graph_nx)
-        # }
 
-        # centralities = tensor(
-        #     [
-        #         # nx.degree_centrality(graph_nx),
-        #         # nx.closeness_centrality(graph_nx),
-        #         # nx.betweenness_centrality(graph_nx),
-        #         # nx.eigenvector_centrality(graph_nx)
-        #     ]
-        # )
-        
-        # Calculate node centralities
         degree_centrality = nk.centrality.DegreeCentrality(G_nk, normalized=True).run().scores()
         closeness_centrality = nk.centrality.Closeness(G_nk, True, True).run().scores()
         betweenness_centrality = nk.centrality.Betweenness(G_nk).run().scores()
         eigen_centrality = nk.centrality.EigenvectorCentrality(G_nk).run().scores()
 
-        # num_nodes = G_nk.numberOfNodes()
-        # centralities = tensor(
-        #     [
-        #         [degree_centrality[v] for v in range(num_nodes)],
-        #         [closeness_centrality[v] for v in range(num_nodes)],
-        #         [betweenness_centrality[v] for v in range(num_nodes)],
-        #         [eigen_centrality[v] for v in range(num_nodes)]
-        #     ]
-        #     ,
-        #     dtype=torch.float64
-        # )
         centralities = {
             "degree_centralities": degree_centrality,
             "closeness_centralities": closeness_centrality,
@@ -225,7 +199,7 @@ class ConcatNodeCentralities(BaseTransform):
         centralities_tensor = tensor(centralities_array, dtype=torch.float32)
         concat_features = torch.cat((data.x, centralities_tensor), dim=1)
         concat_features_df = pd.DataFrame(concat_features)
-        concat_features_df.to_csv("concat_features_df.csv")
+        # concat_features_df.to_csv("concat_features_df.csv")
 
         transformed_node_feature_graph = Data(
             x = concat_features,
@@ -314,7 +288,7 @@ def testPhase(model: Module, criterion: CrossEntropyLoss, test_loader: DataLoade
 
             # pred = outputs.argmax(dim=1)  # Use the class with the highest probability.
 
-            output = model(batch.x, batch.edge_index)
+            output, h = model(batch.x, batch.edge_index)
             label = batch.y[batch.test_mask]
             pred = output[batch.test_mask]
             loss = criterion(pred, label)
@@ -343,7 +317,7 @@ def validationPhase(model: Module, criterion: CrossEntropyLoss, val_loader: Data
             # Similar to the training loop, perform forward pass, compute loss, and accuracy
             # batch = batch.to(device)
 
-            outputs = model(batch.x, batch.edge_index)
+            outputs, h = model(batch.x, batch.edge_index)
             loss = criterion(outputs[batch.val_mask], batch.y[batch.val_mask])
 
             metricsTracker.update(outputs[batch.val_mask], batch.y[batch.val_mask]) # pass prediction and label to metrics object to calculate metrics
@@ -372,7 +346,7 @@ def trainer(model: Module, criterion: CrossEntropyLoss, optimizer: Optimizer, tr
         train_loss = 0.0
         correct = 0.0
         # batch = batch.to(device)
-        out = model(batch.x, batch.edge_index)  # Perform a single forward pass.
+        out, _ = model(batch.x, batch.edge_index)  # Perform a single forward pass.
         
         loss = criterion(out[batch.train_mask], batch.y[batch.train_mask])  # Compute the loss.
         loss.backward()  # Derive gradients.
@@ -405,7 +379,8 @@ def trainPhase(train_loader: DataLoader, val_loader: DataLoader, num_classes: in
     metricCollection.to(device)
     averageValLosses: list[float] = []
     averageTrainLosses: list[float] = []
-    earlyStopper = EarlyStopper(patience=3, min_delta=0)
+
+    earlyStopper = EarlyStopper(patience=1, min_delta_factor=0.01)
 
     for epoch in range(0, epochs):
         average_train_loss, accuracy_train = trainer(model, criterion, optimizer, train_loader, device)
@@ -428,3 +403,34 @@ def trainPhase(train_loader: DataLoader, val_loader: DataLoader, num_classes: in
             averageValLosses=averageValLosses,
             metricCollection=metricCollection
         )
+
+def visualize(h, color, epoch=None, loss=None, accuracy=None):
+    plt.figure(figsize=(12,12))
+    plt.xticks([])
+    plt.yticks([])
+
+    if torch.is_tensor(h):
+        h = h.detach().cpu().numpy()
+        color = color.detach().cpu().numpy()
+        plt.scatter(h[:, 0], h[:, 1], s=70, c=color, cmap="Set2")
+        if epoch is not None and loss is not None and accuracy['train'] is not None and accuracy['val'] is not None:
+            plt.xlabel((f'Epoch: {epoch}, Loss: {loss.item():.4f} \n'
+                        f'Training Accuracy: {accuracy["train"]*100:.2f}% \n'
+                        f' Validation Accuracy: {accuracy["val"]*100:.2f}%'),
+                        fontsize=16)
+    else:
+        nx.draw_networkx(h, pos=nx.spring_layout(h, seed=42), with_labels=False,
+                         node_color=color, cmap="Set2")
+    plt.show()
+
+def visualize2(h, color):
+    h = h.detach().cpu().numpy()
+    color = color.detach().cpu().numpy()
+    z = TSNE(n_components=2).fit_transform(h)
+
+    plt.figure(figsize=(12,10))
+    plt.xticks([])
+    plt.yticks([])
+
+    plt.scatter(z[:, 0], z[:, 1], s=70, c=color, cmap="Set2")
+    plt.show()

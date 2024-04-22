@@ -40,32 +40,21 @@ class LOL_Dataset(Dataset):
         # creates a single graph for each dataset
         for idx, raw_filename in enumerate(self.raw_file_names):
             # shape [num_nodes, num_node_features]
-            # node_feature_matrix: list = []
             G = nx.read_graphml(f"{self.raw_dir}/{raw_filename}")
             output_graph_fileName = f"data_{idx}.pt"
             # first_node, first_node_feat = next(G.nodes(data=True))
             node_attrs_names = list(next(iter(G.nodes(data=True)))[-1].keys())
-            # node_feature_names: list = node_attrs.keys()
             # tier holds the label/targets of the node
             if 'tier' in node_attrs_names:
                 node_attrs_names.remove("tier")
             from_nx_graph: Data = from_networkx(G, group_node_attrs=node_attrs_names)
             #  shape [num_nodes, *]
-            # node_level_targets: list[int] = [node_attr_dict['tier'] for _, node_attr_dict in G.nodes(data=True)]
             node_level_targets: list[int] = [node_attr_dict.get('tier', None) for _, node_attr_dict in G.nodes(data=True)]
             if None in node_level_targets:
                 raise ValueError("Some nodes are missing the 'tier' attribute.")
             else:
                 # Convert targets to torch.Tensor and add them to the Data object
                 from_nx_graph.y = torch.tensor(np.asarray(node_level_targets), dtype=torch.int64)
-
-            # for node, attributes in G.nodes(data=True):
-            #     node_features_dict: dict = attributes.copy()
-            #     node_label: int = node_features_dict.pop("tier")
-            #     node_features_vector: list = list(node_features_dict.values())
-            #     node_feature_matrix.append(node_features_vector)
-            #     node_level_targets.append(node_label)
-
 
             save_graph = Data(
                 x=torch.tensor(from_nx_graph.x, dtype=torch.float32),

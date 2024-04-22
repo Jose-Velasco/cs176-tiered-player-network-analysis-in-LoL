@@ -7,18 +7,21 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import NormalizeFeatures, Compose, ToDevice
 # from sklearn.model_selection import StratifiedShuffleSplit
 from torch_geometric.loader import DataLoader
-from train_utils import testPhase, trainPhase, CustomRandomNodeSplitMasker, CustomRandomNodeUnderSampler, ConcatNodeCentralities
-from models import GCN
+from train_utils import testPhase, trainPhase, CustomRandomNodeSplitMasker, CustomRandomNodeUnderSampler, ConcatNodeCentralities, visualize, visualize2
+from models import GNNModel
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv, MessagePassing, summary
+from typing import Callable
 
 # %%
 ROOT_DIR="PTG_data"
 OUTPUT_DIR = "./experiments"
-NUM_EPOCHS = 100
+NUM_EPOCHS = 449
 TEST_SIZE = 0.1
 VALIDATION_SIZE = 0.1
 RANDOM_STATE = 42
-BATCH_SIZE = 10
-HIDDEN_CHANNELS = 32
+BATCH_SIZE = 1
+HIDDEN_CHANNELS = 16
 torch.manual_seed(RANDOM_STATE)
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # %%
@@ -31,9 +34,8 @@ nodeSPlitMasker = CustomRandomNodeSplitMasker(
 concatNodeCentralitiesTransformer = ConcatNodeCentralities()
 train_transformer = Compose(
     [
-        # nodeUnderSample,
-        NormalizeFeatures(),
         ToDevice(DEVICE),
+        NormalizeFeatures(),
         nodeSPlitMasker
     ]
 )
@@ -45,11 +47,14 @@ train_val_test_pre_transforms = Compose(
 )
 val_test_transformer = Compose(
     [
-        # nodeUnderSample,
         ToDevice(DEVICE),
+        NormalizeFeatures(),
         nodeSPlitMasker
     ]
 )
+print(f"{train_transformer = }")
+print(f"{train_val_test_pre_transforms = }")
+print(f"{val_test_transformer = }")
 
 train_dataset = LOL_Dataset(
     root=ROOT_DIR,
@@ -71,47 +76,43 @@ DATA_SET_CLASSES = train_dataset.num_classes
 print(f"{DATA_SET_NUM_FEATURES = }")
 print(f"{DATA_SET_CLASSES = }")
 print(f"{NUM_NODES = }")
+print(f"{LOL_GRAPH.num_edges = }")
+print(f'Has isolated nodes: {LOL_GRAPH.has_isolated_nodes()}')
 # %%
-# splitter = StratifiedShuffleSplit(n_splits=1, test_size=TEST_SIZE, random_state=RANDOM_STATE)
-
-# # Split the data indices into train and test sets
-# for train_index, test_index in splitter.split(np.zeros(NUM_NODES), LOL_GRAPH.y):
-#     train_indices, test_indices = train_index, test_index
-
-# # Now, split the training indices into training and validation sets
-# splitter = StratifiedShuffleSplit(n_splits=1, test_size=VALIDATION_SIZE, random_state=RANDOM_STATE)  # Assuming 20% for validation set
-
-# for train_index, val_index in splitter.split(LOL_GRAPH.y[train_indices], LOL_GRAPH.y[train_indices]):
-#     train_indices, val_indices = train_index, val_index
-
-# # %%
-# train_mask = torch.zeros(LOL_GRAPH.num_nodes, dtype=torch.bool)
-# # set indices where to true for nodes to include from indices in train_indices
-# train_mask[train_indices] = True
-
-# val_mask = torch.zeros(LOL_GRAPH.num_nodes, dtype=torch.bool)
-# val_mask[val_indices] = True
-
-# test_mask = torch.zeros(LOL_GRAPH.num_nodes, dtype=torch.bool)
-# test_mask[test_indices] = True
-# # %%
-
-# %%
-# train_sampler = SubsetRandomSampler(train_indices)
-# val_sampler = SubsetRandomSampler(val_indices)
-# test_sampler = SubsetRandomSampler(test_indices)
-# train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=train_sampler)
-# val_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE, sampler=val_sampler)
-# test_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE, sampler=test_sampler)
-
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE)
 test_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE)
+# %%[markdown]
+# # Building model layers
+gnn_layers: list[MessagePassing] = [
+    GCNConv(DATA_SET_NUM_FEATURES, HIDDEN_CHANNELS),
+    GCNConv(HIDDEN_CHANNELS, HIDDEN_CHANNELS),
+    GCNConv(HIDDEN_CHANNELS, DATA_SET_CLASSES)
+]
+
+activation_functions: list[Callable] = [
+    F.tanh,
+    F.tanh,
+    F.tanh
+]
+print(f"{gnn_layers = }")
+print(f"{activation_functions = }")
 # %%
-gcn = GCN(DATA_SET_NUM_FEATURES, HIDDEN_CHANNELS, DATA_SET_CLASSES)
+gcn = GNNModel(gnn_layers, activation_functions, addDropOut=False)
 gcn_optimizer = torch.optim.Adam(gcn.parameters(), lr=0.001)
 gcn_criterion = torch.nn.CrossEntropyLoss()
 print(gcn)
+LOL_GRAPH.to(torch.device("cpu"))
+print(summary(gcn, LOL_GRAPH.x, LOL_GRAPH.edge_index))
+# %%
+# %%[markdown]
+#  ## Visualize **before** training
+gcn.eval()
+# LOL_GRAPH.to(torch.device("cpu"))
+vis_model_out, vis_hidden_embeddings = gcn(LOL_GRAPH.x, LOL_GRAPH.edge_index)
+print(f'Embedding shape: {list(vis_hidden_embeddings.shape)}')
+visualize(vis_hidden_embeddings, color=LOL_GRAPH.y)
+visualize2(vis_model_out, color=LOL_GRAPH.y)
 # %%
 trainPhase(
     train_loader=train_loader,
@@ -127,7 +128,7 @@ trainPhase(
 )
 
 # %%[markdown]
-#  ## Results
+#  # **Results**
 
 #  #### Model Test
 # %%
@@ -135,12 +136,17 @@ test_loss, test_accuracy = testPhase(gcn, gcn_criterion, test_loader, DEVICE)
 print(f'Test Loss: {test_loss:.4f}, Test Accuracy: {100 * test_accuracy:.2f}%')
 
 # %%
-
-
-# test_loss, test_accuracy = testPhase(model_W_UD, criterion_W_UD, test_loader, DEVICE)
-# print(f'Test Loss: {test_loss:.4f}, Test Accuracy: {100 * test_accuracy:.2f}%')
-
 # %%[markdown]
+#  ## Visualize Results after **training**
+# %%
+gcn.eval()
+LOL_GRAPH.to(torch.device("cuda"))
+vis_model_out2, vis_hidden_embeddings2 = gcn(LOL_GRAPH.x, LOL_GRAPH.edge_index)
+vis_hidden_embeddings2 = vis_hidden_embeddings2.to(torch.device("cpu"))
+vis_model_out2 = vis_model_out2.to(torch.device("cpu"))
+print(f'Embedding shape: {list(vis_hidden_embeddings2.shape)}')
+visualize(vis_hidden_embeddings2, color=LOL_GRAPH.y)
 
-# ## Visualize the results
-
+# %%
+visualize2(vis_model_out2, color=LOL_GRAPH.y)
+# %%
