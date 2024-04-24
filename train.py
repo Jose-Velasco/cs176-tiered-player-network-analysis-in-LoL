@@ -7,11 +7,16 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import NormalizeFeatures, Compose, ToDevice
 # from sklearn.model_selection import StratifiedShuffleSplit
 from torch_geometric.loader import DataLoader
-from train_utils import testPhase, trainPhase, CustomRandomNodeSplitMasker, CustomRandomNodeUnderSampler, ConcatNodeCentralities, visualize, visualize2
+from train_utils import testPhase, trainPhase, CustomRandomNodeSplitMasker, CustomRandomNodeUnderSampler, ConcatNodeCentralities
+from utils_visualize import visualize, visualize2
 from models import GNNModel
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, MessagePassing, summary
+from torch_geometric.nn import GCNConv, MessagePassing, summary, GATConv
 from typing import Callable
+from utils import get_now_datetime
+import networkx as nx
+from torch_geometric.data import Data
+from torch_geometric.utils import to_networkx
 
 # %%
 ROOT_DIR="PTG_data"
@@ -84,6 +89,7 @@ val_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE)
 test_loader = DataLoader(val_test_dataset, batch_size=BATCH_SIZE)
 # %%[markdown]
 # # Building model layers
+# %%
 gnn_layers: list[MessagePassing] = [
     GCNConv(DATA_SET_NUM_FEATURES, HIDDEN_CHANNELS),
     GCNConv(HIDDEN_CHANNELS, HIDDEN_CHANNELS),
@@ -149,4 +155,26 @@ visualize(vis_hidden_embeddings2, color=LOL_GRAPH.y)
 
 # %%
 visualize2(vis_model_out2, color=LOL_GRAPH.y)
+
+# %%
+def save_output_graph(hidden_embeddings: torch.Tensor, edge_index: torch.Tensor, labels: torch.Tensor):
+    """
+    
+    detaches hidden_embeddings and labels to CPU might need to them back to original device if needed
+    """
+    graph_ptg = Data(x=hidden_embeddings, edge_index=edge_index, y=labels)
+    graph_nx = to_networkx(graph_ptg)
+    for node, node_feature in enumerate(hidden_embeddings):
+        node_feature = node_feature.detach().cpu().numpy()
+        graph_nx.nodes[node].update({feature: float(value) for feature, value in enumerate(node_feature)})
+    # graph_nx.graph["y"] = 
+    labels = labels.detach().cpu().numpy()
+    graph_nx.graph.update({f"node{node}_label": label for node, label in enumerate(labels)})
+    graph_nx.graph
+    date_time_str = get_now_datetime()
+    GRAPHML_FILENAME = f"hidden_embedding_graph{date_time_str}"
+    nx.write_graphml(graph_nx, f"{GRAPHML_FILENAME}.graphml")
+
+# %%
+save_output_graph(vis_hidden_embeddings2, LOL_GRAPH.edge_index, LOL_GRAPH.y)
 # %%

@@ -24,8 +24,9 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx
 import networkit as nk
 import pandas as pd
+from utils import get_now_datetime
 import networkx as nx
-from sklearn.manifold import TSNE
+
 
 class EarlyStopper:
     def __init__(self, patience: int = 1, min_delta_factor: float = 0.01):
@@ -380,7 +381,7 @@ def trainPhase(train_loader: DataLoader, val_loader: DataLoader, num_classes: in
     averageValLosses: list[float] = []
     averageTrainLosses: list[float] = []
 
-    earlyStopper = EarlyStopper(patience=1, min_delta_factor=0.01)
+    earlyStopper = EarlyStopper(patience=3, min_delta_factor=0.01)
 
     for epoch in range(0, epochs):
         average_train_loss, accuracy_train = trainer(model, criterion, optimizer, train_loader, device)
@@ -404,33 +405,12 @@ def trainPhase(train_loader: DataLoader, val_loader: DataLoader, num_classes: in
             metricCollection=metricCollection
         )
 
-def visualize(h, color, epoch=None, loss=None, accuracy=None):
-    plt.figure(figsize=(12,12))
-    plt.xticks([])
-    plt.yticks([])
-
-    if torch.is_tensor(h):
-        h = h.detach().cpu().numpy()
-        color = color.detach().cpu().numpy()
-        plt.scatter(h[:, 0], h[:, 1], s=70, c=color, cmap="Set2")
-        if epoch is not None and loss is not None and accuracy['train'] is not None and accuracy['val'] is not None:
-            plt.xlabel((f'Epoch: {epoch}, Loss: {loss.item():.4f} \n'
-                        f'Training Accuracy: {accuracy["train"]*100:.2f}% \n'
-                        f' Validation Accuracy: {accuracy["val"]*100:.2f}%'),
-                        fontsize=16)
-    else:
-        nx.draw_networkx(h, pos=nx.spring_layout(h, seed=42), with_labels=False,
-                         node_color=color, cmap="Set2")
-    plt.show()
-
-def visualize2(h, color):
-    h = h.detach().cpu().numpy()
-    color = color.detach().cpu().numpy()
-    z = TSNE(n_components=2).fit_transform(h)
-
-    plt.figure(figsize=(12,10))
-    plt.xticks([])
-    plt.yticks([])
-
-    plt.scatter(z[:, 0], z[:, 1], s=70, c=color, cmap="Set2")
-    plt.show()
+def save_output_graph(hidden_embeddings: torch.Tensor, edge_index: torch.Tensor, labels: torch.Tensor):
+    graph_ptg = Data(x=hidden_embeddings, edge_index=edge_index, y=labels)
+    graph_nx = to_networkx(graph_ptg)
+    for node, node_feature in enumerate(hidden_embeddings):
+        graph_nx.nodes[node].update(node_feature) 
+    graph_nx.graph["y"] = labels
+    date_time_str = get_now_datetime()
+    GRAPHML_FILENAME = f"hidden_embedding_graph{date_time_str}"
+    nx.write_graphml(graph_nx, f"{GRAPHML_FILENAME}.graphml")

@@ -19,7 +19,7 @@ class GNNModel(torch.nn.Module):
             print(f"{len(self.activation_functions) = }")
             print(f"{len(self.gnn_layers) = }")
 
-    # return (softmax classifier results, hidden embeddings) 
+    # return (softmax classifier results, hidden embeddings (Final GNN embedding space)) 
     def forward(self, x, edge_index):
         # # First Message Passing Layer (Transformation)
         # out = self.conv1(x, edge_index)
@@ -36,4 +36,6 @@ class GNNModel(torch.nn.Module):
             if self.addDropOut and idx < (len(self.gnn_layers) - 1):
                 x = F.dropout(x, p=0.5, training=self.training)
 
-        return F.log_softmax(x, dim=1), x
+        out =  F.log_softmax(x, dim=1)
+
+        return out, x
